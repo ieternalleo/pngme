@@ -1,16 +1,17 @@
-use std::{io::Read, str::FromStr};
+use std::fmt::Display;
+use std::str::{self, FromStr};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct ChunkType {
+pub struct ChunkType {
     data: u32,
 }
 
 impl ChunkType {
-    pub fn bytes(self) -> [u8; 4] {
+    pub fn bytes(&self) -> [u8; 4] {
         self.data.to_be_bytes()
     }
 
-    pub fn is_critical(self) -> bool {
+    pub fn is_critical(&self) -> bool {
         self.data
             .to_be_bytes()
             .first()
@@ -18,7 +19,7 @@ impl ChunkType {
             .is_ascii_uppercase()
     }
 
-    pub fn is_public(self) -> bool {
+    pub fn is_public(&self) -> bool {
         self.data
             .to_be_bytes()
             .iter()
@@ -28,7 +29,7 @@ impl ChunkType {
             .is_ascii_uppercase()
     }
 
-    pub fn is_reserved_bit_valid(self) -> bool {
+    pub fn is_reserved_bit_valid(&self) -> bool {
         self.data
             .to_be_bytes()
             .iter()
@@ -37,7 +38,7 @@ impl ChunkType {
             .unwrap()
             .is_ascii_uppercase()
     }
-    pub fn is_safe_to_copy(self) -> bool {
+    pub fn is_safe_to_copy(&self) -> bool {
         !self
             .data
             .to_be_bytes()
@@ -47,7 +48,14 @@ impl ChunkType {
             .unwrap()
             .is_ascii_uppercase()
     }
-    // pub fn is_valid(self) -> bool {}
+    pub fn is_valid(&self) -> bool {
+        self.is_reserved_bit_valid()
+            && !self
+                .data
+                .to_be_bytes()
+                .iter()
+                .any(|&byte| byte.is_ascii_digit())
+    }
 }
 
 impl TryFrom<[u8; 4]> for ChunkType {
@@ -55,7 +63,16 @@ impl TryFrom<[u8; 4]> for ChunkType {
     fn try_from(value: [u8; 4]) -> Result<Self, Self::Error> {
         let data = u32::from_be_bytes(value);
         let res = ChunkType { data };
-        Ok(res)
+        if res
+            .data
+            .to_be_bytes()
+            .iter()
+            .any(|&byte| byte.is_ascii_digit())
+        {
+            Err("Invalid Chunk")
+        } else {
+            Ok(res)
+        }
     }
 }
 
@@ -65,13 +82,25 @@ impl FromStr for ChunkType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bytes = s.as_bytes();
         let byte_array = <[u8; 4]>::try_from(bytes).unwrap();
-        if byte_array.iter().any(|&x| x.is_ascii_digit()) {
-            Ok(ChunkType {
-                data: u32::from_be_bytes(byte_array),
-            })
-        } else {
+        let data = u32::from_be_bytes(byte_array);
+        let res = ChunkType { data };
+        if res
+            .data
+            .to_be_bytes()
+            .iter()
+            .any(|&byte| byte.is_ascii_digit())
+        {
             Err(())
+        } else {
+            Ok(res)
         }
+    }
+}
+
+impl Display for ChunkType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let data_slice = &self.bytes();
+        write!(f, "{}", std::str::from_utf8(data_slice).unwrap())
     }
 }
 
@@ -159,19 +188,17 @@ mod tests {
         assert!(chunk.is_err());
     }
 
-    // #[ignore]
-    // #[test]
-    // pub fn test_chunk_type_string() {
-    //     let chunk = ChunkType::from_str("RuSt").unwrap();
-    //     assert_eq!(&chunk.to_string(), "RuSt");
-    // }
+    #[test]
+    pub fn test_chunk_type_string() {
+        let chunk = ChunkType::from_str("RuSt").unwrap();
+        assert_eq!(&chunk.to_string(), "RuSt");
+    }
 
-    // #[ignore]
-    // #[test]
-    // pub fn test_chunk_type_trait_impls() {
-    //     let chunk_type_1: ChunkType = TryFrom::try_from([82, 117, 83, 116]).unwrap();
-    //     let chunk_type_2: ChunkType = FromStr::from_str("RuSt").unwrap();
-    //     let _chunk_string = format!("{}", chunk_type_1);
-    //     let _are_chunks_equal = chunk_type_1 == chunk_type_2;
-    // }
+    #[test]
+    pub fn test_chunk_type_trait_impls() {
+        let chunk_type_1: ChunkType = TryFrom::try_from([82, 117, 83, 116]).unwrap();
+        let chunk_type_2: ChunkType = FromStr::from_str("RuSt").unwrap();
+        let _chunk_string = format!("{}", chunk_type_1);
+        let _are_chunks_equal = chunk_type_1 == chunk_type_2;
+    }
 }

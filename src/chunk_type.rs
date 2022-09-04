@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::fmt::Display;
 use std::str::{self, FromStr};
 
@@ -23,8 +24,7 @@ impl ChunkType {
         self.data
             .to_be_bytes()
             .iter()
-            .skip(1)
-            .next()
+            .nth(1)
             .unwrap()
             .is_ascii_uppercase()
     }
@@ -33,8 +33,7 @@ impl ChunkType {
         self.data
             .to_be_bytes()
             .iter()
-            .skip(2)
-            .next()
+            .nth(2)
             .unwrap()
             .is_ascii_uppercase()
     }
@@ -43,8 +42,7 @@ impl ChunkType {
             .data
             .to_be_bytes()
             .iter()
-            .skip(3)
-            .next()
+            .nth(3)
             .unwrap()
             .is_ascii_uppercase()
     }

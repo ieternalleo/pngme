@@ -18,7 +18,8 @@ impl Display for CRCMismatch {
         write!(f, "CRC mismatch")
     }
 }
-struct Chunk {
+pub struct Chunk {
+    length: u32,
     chunk_type: ChunkType,
     data: Vec<u8>,
     crc: u32,
@@ -27,6 +28,8 @@ struct Chunk {
 impl Chunk {
     pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Chunk {
         pub const PNG_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+
+        // CRC calculated on the preceding bits for ChunkType and ChunkData
         let chunk_data_bytes = chunk_type
             .bytes()
             .iter()
@@ -34,13 +37,14 @@ impl Chunk {
             .copied()
             .collect::<Vec<u8>>();
         Chunk {
+            length: data.len() as u32,
             chunk_type,
             data,
             crc: PNG_CRC.checksum(&chunk_data_bytes),
         }
     }
     pub fn length(&self) -> u32 {
-        self.data.len() as u32
+        self.length
     }
     fn chunk_type(&self) -> &ChunkType {
         &self.chunk_type

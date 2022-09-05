@@ -1,11 +1,14 @@
+use crate::{Error, Result};
 use std::convert::TryFrom;
-use std::fmt::Display;
-use std::str::{self, FromStr};
-
+use std::str::{self, FromStr, Utf8Error};
+use std::{error, fmt::Display};
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ChunkType {
     data: u32,
 }
+
+#[derive(Debug)]
+struct InvalidChunkError;
 
 impl ChunkType {
     pub fn bytes(&self) -> [u8; 4] {
@@ -57,41 +60,28 @@ impl ChunkType {
 }
 
 impl TryFrom<[u8; 4]> for ChunkType {
-    type Error = &'static str;
-    fn try_from(value: [u8; 4]) -> Result<Self, Self::Error> {
-        let data = u32::from_be_bytes(value);
-        let res = ChunkType { data };
-        if res
-            .data
-            .to_be_bytes()
-            .iter()
-            .any(|&byte| byte.is_ascii_digit())
-        {
-            Err("Invalid Chunk")
-        } else {
-            Ok(res)
-        }
+    type Error = Error;
+    fn try_from(bytes: [u8; 4]) -> Result<Self> {
+        let value: &str = std::str::from_utf8(&bytes)?;
+        ChunkType::from_str(value)
     }
 }
 
 impl FromStr for ChunkType {
-    type Err = ();
+    type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self> {
         let bytes = s.as_bytes();
-        let byte_array = <[u8; 4]>::try_from(bytes).unwrap();
-        let data = u32::from_be_bytes(byte_array);
-        let res = ChunkType { data };
-        if res
-            .data
-            .to_be_bytes()
-            .iter()
-            .any(|&byte| byte.is_ascii_digit())
-        {
-            Err(())
-        } else {
-            Ok(res)
+        match bytes.iter().any(|&x| x.is_ascii_digit()) {
+            true => Err(Box::new(InvalidChunkError)),
+            false => {
+                let data = u32::from_be_bytes(<[u8; 4]>::try_from(bytes)?);
+                let res = ChunkType { data };
+                Ok(res)
+            }
         }
+
+        // let byte_array = <[u8; 4]>::try_from(bytes)?;
     }
 }
 
@@ -102,6 +92,12 @@ impl Display for ChunkType {
     }
 }
 
+impl error::Error for InvalidChunkError {}
+impl Display for InvalidChunkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Chunk type contains a numeric ASCII character")
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

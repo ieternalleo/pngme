@@ -1,12 +1,23 @@
 use crate::chunk_type::ChunkType;
 
 use std::convert::TryFrom;
-use std::{fmt, io};
-use std::{io::Read, string::FromUtf8Error};
+use std::error;
+use std::fmt;
+use std::fmt::Display;
+use std::io::Read;
 
+use crate::{Error, Result};
 use crc::{Crc, CRC_32_ISO_HDLC};
 
-pub const PNG_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+#[derive(Debug)]
+struct CRCMismatch;
+
+impl error::Error for CRCMismatch {}
+impl Display for CRCMismatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CRC mismatch")
+    }
+}
 struct Chunk {
     chunk_type: ChunkType,
     data: Vec<u8>,
@@ -15,6 +26,7 @@ struct Chunk {
 
 impl Chunk {
     pub fn new(chunk_type: ChunkType, data: Vec<u8>) -> Chunk {
+        pub const PNG_CRC: Crc<u32> = Crc::<u32>::new(&CRC_32_ISO_HDLC);
         let chunk_data_bytes = chunk_type
             .bytes()
             .iter()
@@ -39,8 +51,8 @@ impl Chunk {
     fn crc(&self) -> u32 {
         self.crc.clone()
     }
-    fn data_as_string(&self) -> Result<String, FromUtf8Error> {
-        String::from_utf8(self.data.clone())
+    fn data_as_string(&self) -> Result<String> {
+        Ok(String::from_utf8(self.data.clone())?)
     }
     fn as_bytes(&self) -> Vec<u8> {
         let chunk_data = self
@@ -56,9 +68,10 @@ impl Chunk {
         chunk_data
     }
 }
+
 impl TryFrom<&[u8]> for Chunk {
-    type Error = ();
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+    type Error = Error;
+    fn try_from(value: &[u8]) -> Result<Self> {
         let mut chunk_lbuffer = [0u8; 4];
 
         let _ = (&value[0..4]).read(&mut chunk_lbuffer[..]);
@@ -68,14 +81,22 @@ impl TryFrom<&[u8]> for Chunk {
         // let chunk_data: Vec<u8> = value[8..(length_bytes) as usize].to_owned();
 
         let mut chunk_type_buf = [0u8; 4];
-        let _ = (&value[4..8]).read(&mut chunk_type_buf[..]).unwrap();
-        let chunk_type = ChunkType::try_from(chunk_type_buf).unwrap();
+        let _ = (&value[4..8]).read(&mut chunk_type_buf[..])?;
+        let chunk_type = ChunkType::try_from(chunk_type_buf)?;
 
         let data_start: usize = 8;
         let data_end: usize = (8 + chunk_length) as usize;
         let chunk_data: Vec<_> = value[data_start..data_end].to_owned();
 
-        Ok(Chunk::new(chunk_type, chunk_data))
+        let mut chunk_crc_buff = [0u8; 4];
+        let _ = (&value[data_end..data_end + 4]).read(&mut chunk_crc_buff);
+        let chunk_crc: u32 = u32::from_be_bytes(chunk_crc_buff);
+        let chunk = Chunk::new(chunk_type, chunk_data);
+        if chunk.crc() == chunk_crc {
+            Ok(chunk)
+        } else {
+            Err(Box::new(CRCMismatch))
+        }
 
         // let chunk_length =
         //     u32::from_be_bytes(value[0..4].clone_from_slice(src).try_into().expect("Entered Chunk is too short"));

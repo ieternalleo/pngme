@@ -18,6 +18,8 @@ impl Display for CRCMismatch {
         write!(f, "CRC mismatch")
     }
 }
+
+#[derive(Debug, Clone)]
 pub struct Chunk {
     length: u32,
     chunk_type: ChunkType,
@@ -46,19 +48,19 @@ impl Chunk {
     pub fn length(&self) -> u32 {
         self.length
     }
-    fn chunk_type(&self) -> &ChunkType {
+    pub fn chunk_type(&self) -> &ChunkType {
         &self.chunk_type
     }
-    fn data(&self) -> &[u8] {
+    pub fn data(&self) -> &[u8] {
         &self.data
     }
-    fn crc(&self) -> u32 {
+    pub fn crc(&self) -> u32 {
         self.crc.clone()
     }
-    fn data_as_string(&self) -> Result<String> {
+    pub fn data_as_string(&self) -> Result<String> {
         Ok(String::from_utf8(self.data.clone())?)
     }
-    fn as_bytes(&self) -> Vec<u8> {
+    pub fn as_bytes(&self) -> Vec<u8> {
         let chunk_data = self
             .length()
             .to_be_bytes()
@@ -95,12 +97,12 @@ impl TryFrom<&[u8]> for Chunk {
         let mut chunk_crc_buff = [0u8; 4];
         let _ = (&value[data_end..data_end + 4]).read(&mut chunk_crc_buff);
         let chunk_crc: u32 = u32::from_be_bytes(chunk_crc_buff);
+
         let chunk = Chunk::new(chunk_type, chunk_data);
-        if chunk.crc() == chunk_crc {
-            Ok(chunk)
-        } else {
-            Err(Box::new(CRCMismatch))
+        if chunk.crc() != chunk_crc {
+            return Err(Box::new(CRCMismatch));
         }
+        Ok(chunk)
 
         // let chunk_length =
         //     u32::from_be_bytes(value[0..4].clone_from_slice(src).try_into().expect("Entered Chunk is too short"));

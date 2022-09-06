@@ -1,8 +1,134 @@
-use crate::chunk;
+use crate::chunk::{self, Chunk};
+use crate::chunk_type::ChunkType;
 use crate::{Error, Result};
-struct Png {}
+use std::convert::TryFrom;
+use std::error;
+use std::fmt::Display;
+use std::str::FromStr;
 
-impl Png {}
+#[derive(Debug)]
+enum PngDecoderError {
+    InvalidPngHeader,
+    InvalidStartChunk,
+    ChunkDeletionError,
+}
+impl error::Error for PngDecoderError {}
+impl Display for PngDecoderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PngDecoderError::InvalidPngHeader => {
+                write!(f, "the src PNG contains a non-standard header")
+            }
+            PngDecoderError::InvalidStartChunk => {
+                write!(f, "the src PNG does not contain a Start Chunk")
+            }
+            PngDecoderError::ChunkDeletionError => {
+                write!(f, "Failed to remove Chunk")
+            }
+        }
+    }
+}
+
+struct Png {
+    chunks: Vec<Chunk>,
+}
+
+impl Png {
+    // Static definition of a standard PNG header
+    const STANDARD_HEADER: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
+    const EMPTY_CHUNK_SIZE: usize = 12; // 4 bytes for Data Length, ChunkType, and CRC
+    fn from_chunks(chunks: Vec<Chunk>) -> Png {
+        Png { chunks }
+    }
+    fn append_chunk(&mut self, chunk: Chunk) {
+        self.chunks.push(chunk);
+    }
+    fn remove_chunk(&mut self, chunk_type: &str) -> Result<Chunk> {
+        let ch_type = ChunkType::from_str(chunk_type)?;
+
+        let pos = self
+            .chunks()
+            .iter()
+            .position(|ch| *ch.chunk_type() == ch_type);
+        match pos {
+            None => Err(Box::new(PngDecoderError::ChunkDeletionError)),
+            Some(idx) => Ok(self.chunks.remove(idx)),
+        }
+    }
+
+    fn header(&self) -> &[u8; 8] {
+        &Png::STANDARD_HEADER
+    }
+    fn chunks(&self) -> &[Chunk] {
+        &self.chunks
+    }
+    fn chunk_by_type(&self, chunk_type: &str) -> Option<&Chunk> {
+        self.chunks
+            .iter()
+            .find(|&ch| ch.chunk_type().bytes() == chunk_type.as_bytes())
+    }
+    fn as_bytes(&self) -> Vec<u8> {
+        let chunks_as_bytes: Vec<u8> = self
+            .chunks
+            .iter()
+            .flat_map(|chunk| chunk.as_bytes())
+            .collect();
+        let chunks_iter = chunks_as_bytes.iter();
+        Png::STANDARD_HEADER
+            .iter()
+            .chain(chunks_iter)
+            .cloned()
+            .collect::<Vec<u8>>()
+    }
+}
+
+impl Display for Png {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (idx, byte) in Png::STANDARD_HEADER.iter().enumerate() {
+            if idx < Png::STANDARD_HEADER.len() - 1 {
+                write!(f, "{} ", byte)?;
+            } else {
+                writeln!(f, "{}", byte)?;
+            }
+        }
+
+        for chunk in self.chunks() {
+            write!(f, "{}", chunk)?;
+        }
+        Ok(())
+    }
+}
+
+// Takes a u8 slice and creates a Png
+impl TryFrom<&[u8]> for Png {
+    type Error = Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Self> {
+        // Check bytes for valid png header
+        if bytes.len() < 8 {
+            return Err(Box::new(PngDecoderError::InvalidPngHeader));
+        }
+
+        let mut chunks: Vec<Chunk> = Vec::new();
+
+        let header = &bytes[..8];
+        if header != Self::STANDARD_HEADER {
+            return Err(Box::new(PngDecoderError::InvalidPngHeader));
+        }
+
+        let mut cursor = 8usize;
+        while cursor < bytes.len() {
+            let chunk = Chunk::try_from(&bytes[cursor..])?;
+
+            // Increment cursor to the end of the Chunk
+            cursor += Self::EMPTY_CHUNK_SIZE + chunk.length() as usize;
+            // Push chunk to Vector of chunks
+            chunks.push(chunk);
+        }
+
+        Ok(Self { chunks })
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -10,7 +136,6 @@ mod tests {
     use crate::chunk::Chunk;
     use crate::chunk_type::ChunkType;
     use std::convert::TryFrom;
-    use std::str::FromStr;
 
     fn testing_chunks() -> Vec<Chunk> {
         let mut chunks = Vec::new();

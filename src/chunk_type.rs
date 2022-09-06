@@ -2,7 +2,7 @@ use crate::{Error, Result};
 use std::convert::TryFrom;
 use std::str::{self, FromStr, Utf8Error};
 use std::{error, fmt::Display};
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChunkType {
     data: u32,
 }
